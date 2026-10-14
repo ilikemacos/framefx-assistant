@@ -1,6 +1,6 @@
-# WyneAI
+# WrenbyAI
 
-WyneAI is the FrameFX assistant: chat, web search with cited sources, Beta7 preset generation and tool use.
+WrenbyAI is the FrameFX assistant: chat, web search with cited sources, Beta7 preset generation and tool use.
 
 Trained on a 2021 ROG Zephyrus G14.
 
