@@ -1,4 +1,4 @@
-// FrameFX Assistant agent: LLM plans + calls tools (Qwen <tool_call> JSON protocol, with repair), deterministic fast path/fallback.
+// WyneAI agent: LLM plans + calls tools (Qwen <tool_call> JSON protocol, with repair), deterministic fast path/fallback.
 // Only the Beta7 pipeline (Chat.turn via make_preset/change_preset) ever sets preset fields.
 import { GAMES, GPUS } from "./kb.js";
 import { Chat, WHY } from "./presetai.js";
@@ -13,7 +13,13 @@ export const TOOLS = [
   { name: "explain_preset", description: "Explain the current preset's settings and the reasons behind them.", parameters: {} },
   { name: "export_preset", description: "Export the current preset's FrameFX GameProfile JSON: copy to clipboard or download a file.", parameters: { mode: "'copy' or 'download'" } },
   { name: "reset_session", description: "Clear the current preset and start over.", parameters: {} },
+  { name: "web_search", description: "Search the web for current or factual information. Returns titles, URLs and snippets. Cite the URLs you use.", parameters: { query: "string" } },
+  { name: "fetch_page", description: "Fetch the readable text of a web page (e.g. a search result) to read details. Cite its URL.", parameters: { url: "string" } },
 ];
+export let API_BASE = "";
+export function setApiBase(chatUrl) { API_BASE = chatUrl.replace(/\/api\/chat$/, ""); }
+async function webApi(body) { const r = await fetch(API_BASE + "/api/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (r.status === 429) return { ok: false, error: "rate limited, try again in a minute" }; return r.json(); }
 const NAMES = new Set(TOOLS.map(t => t.name));
 
 // ---------- parser ----------
@@ -72,6 +78,8 @@ export function makeTools(assistant, ui = {}) {
       try { done = !!(await (mode === "download" ? ui.download : ui.copy)?.(json, Object.keys(pj)[0])); } catch {}
       return { ok: true, mode, done, note: done ? (mode === "download" ? "File downloaded." : "Copied to clipboard.") : "Export ready; user can use the Copy/Download buttons.", exe: Object.keys(pj)[0], json }; },
     reset_session: () => { chat.reset(); return { ok: true, reply: "Session cleared." }; },
+    web_search: a => webApi({ query: String(a.query || "") }),
+    fetch_page: a => webApi({ url: String(a.url || "") }),
   }; }
 export async function runTool(tools, call) { const f = tools[call.name]; if (!f) return { ok: false, error: "unknown tool" };
   try { return await f(call.arguments || {}); } catch (e) { return { ok: false, error: String(e.message || e) }; } }
@@ -93,7 +101,7 @@ export const isPlainPreset = (text, assistant) => !assistant.route(text) && !/\b
 
 // ---------- agent loop ----------
 export function systemPrompt(presetCtx) {
-  return `You are FrameFX Assistant, the AI agent built into FrameFX (Universal FrameFX), a Windows app adding frame generation, upscaling (CSR 1.3/2.0/AI, FSR 1-4, XeSS), SSGI, RT lighting and CPU boost to games via per-game presets. You were made for FrameFX; if asked who/what model you are or who made you, say you are the FrameFX Assistant, made for FrameFX, and never name another model or company. You can chat about anything, but you run offline with no internet, so say so instead of guessing about recent events.
+  return `You are WyneAI, the AI assistant built into FrameFX (Universal FrameFX), a Windows app adding frame generation, upscaling (CSR 1.3/2.0/AI, FSR 1-4, XeSS), SSGI, RT lighting and CPU boost to games via per-game presets. You were made for FrameFX; if asked who/what model you are or who made you, say you are WyneAI, made for FrameFX, and never name another model or company. You can chat about anything, but say so instead of guessing about recent events.
 
 You can use tools. NEVER invent preset values yourself: presets are only created/changed by make_preset/change_preset. For multi-step requests, call tools one after another. To call a tool, output ONLY:
 <tool_call>
@@ -149,11 +157,11 @@ const PROPS = {
   change_preset: { request: { type: "string", description: "The change in plain words, e.g. 'make it quieter', 'what about 4K', 'turn frame gen off'" } },
   lookup_game: { game: { type: "string" } }, lookup_gpu: { gpu: { type: "string" } },
   compare_gpus: { gpu_a: { type: "string" }, gpu_b: { type: "string" } }, explain_preset: {},
-  export_preset: { mode: { type: "string", enum: ["copy", "download"] } }, reset_session: {} };
+  export_preset: { mode: { type: "string", enum: ["copy", "download"] } }, reset_session: {}, web_search: { query: { type: "string" } }, fetch_page: { url: { type: "string" } } };
 export const TOOL_SCHEMAS = TOOLS.map(t => ({ type: "function", function: { name: t.name, description: t.description,
   parameters: { type: "object", properties: PROPS[t.name], required: Object.keys(PROPS[t.name]).filter(k => k !== "mode") } } }));
 export function nativeSystemPrompt(presetCtx) {
-  return `You are the FrameFX Assistant, the AI agent built into FrameFX (Universal FrameFX), a Windows app that adds frame generation, upscaling (CSR 1.3/2.0/AI, FSR 1-4, XeSS), SSGI, RT lighting and CPU boost to games through per-game presets. You can chat helpfully about anything (general knowledge, tech, games), concisely and in a friendly tone. You have no web browsing, so for very recent events say you may be out of date.
+  return `You are WyneAI, the AI assistant built into FrameFX (Universal FrameFX), a Windows app that adds frame generation, upscaling (CSR 1.3/2.0/AI, FSR 1-4, XeSS), SSGI, RT lighting and CPU boost to games through per-game presets. You can chat helpfully about anything (general knowledge, tech, games), concisely and in a friendly tone. You can use web_search (and fetch_page for details) for current events, news, prices, recent releases or anything you're unsure of; usually one search is enough: answer from the result titles and snippets, and only use fetch_page when you truly need more detail. Cite sources as markdown links [title](url). Don't invent URLs.
 Use the tools for FrameFX work. NEVER invent preset values: presets are only created or changed by make_preset / change_preset (pass the user's exact words for that step, copied verbatim; never add details like resolution, fps or preferences the user didn't say). For multi-step requests call the tools in order (e.g. make_preset, then change_preset, then export_preset). Use lookup_game / lookup_gpu / compare_gpus for knowledge-base facts and explain_preset to explain the current preset. Frame generation always stays off for anti-cheat and competitive games. After tools finish, give a short plain-text summary using only values the tools returned; don't paste raw JSON.
 ${presetCtx}`; }
 Agent.prototype.runNative = async function (text, on = {}) {
@@ -170,7 +178,7 @@ Agent.prototype.runNative = async function (text, on = {}) {
       for (const c of calls) { let args = {}; try { args = JSON.parse(c.function.arguments || "{}"); } catch { try { args = JSON.parse(repairJSON(c.function.arguments || "{}")); } catch { args = {}; } }
         const call = { name: c.function.name, arguments: args }; const res = NAMES.has(call.name) ? await runTool(this.tools, call) : { ok: false, error: "unknown tool" };
         all.push({ call, result: res }); on.step?.(call, res);
-        msgs.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(call.name === "export_preset" ? { ...res, json: "(omitted)" } : res) }); } }
+        msgs.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(call.name === "export_preset" ? { ...res, json: "(omitted)" } : res).slice(0, 6000) }); } }
     const t = this.summarize(all) || "I ran out of steps."; this.remember(text, t); return { text: t, results: all, mode: "cloud-maxsteps" };
   } catch (e) { on.error?.(e); if (all.length) { const t = this.summarize(all); this.remember(text, t); return { text: t, results: all, mode: "cloud-error" }; } throw e; } };
 export function cloudLLM(url = "/api/chat") {

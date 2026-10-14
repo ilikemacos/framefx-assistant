@@ -1,5 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FrameFX Assistant</title>
+<title>WyneAI</title>
 <style>
 :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--txt:#e6e8ee;--mut:#8b93a7;--acc:#7c5cff;--warn:#ffb020}
 *{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt);height:100vh;display:flex}
@@ -20,22 +20,24 @@ pre{background:#0b0d11;border:1px solid var(--line);border-radius:8px;padding:10
 .dots::after{content:"…";animation:b 1s infinite}@keyframes b{50%{opacity:.2}}
 @media(max-width:860px){body{flex-direction:column}aside{width:auto;border-left:0;border-top:1px solid var(--line);max-height:40vh}}
 </style></head><body>
-<main><header><div class="logo">FX</div><h1>FrameFX Assistant</h1><span class="badge" id="badge" title="Chat messages are processed by a cloud AI service. Presets are built by the FrameFX preset engine in your browser.">Cloud AI · needs internet</span><span id="status">Loading…</span><button id="reset">New chat</button></header>
+<main><header><div class="logo">FX</div><h1>WyneAI</h1><span class="badge" id="badge" title="Trained on a 2021 ROG Zephyrus G14. Presets are built by the FrameFX preset engine in your browser.">WyneAI · needs internet</span><span id="status">Loading…</span><button id="reset">New chat</button></header>
 <div id="notice" hidden></div><div id="log"></div>
 <div id="chips"></div>
-<form id="f"><input id="q" autocomplete="off" placeholder="Message the FrameFX assistant…" disabled><button id="send" disabled>Send</button></form>
-<p class="foot">Messages are sent to a cloud AI service to generate replies, so an internet connection is required. Presets are computed locally by the FrameFX preset engine. It can't browse the web and can make mistakes.</p></main>
+<form id="f"><input id="q" autocomplete="off" placeholder="Message WyneAI…" disabled><button id="send" disabled>Send</button></form>
+<p class="foot">Trained on a 2021 ROG Zephyrus G14. An internet connection is required. WyneAI can search the web and cites its sources; presets are computed locally by the FrameFX preset engine. It can make mistakes.</p></main>
 <script type="module">
 import * as ort from "./ort/ort.wasm.min.mjs";
 import { Model, Chat } from "./presetai.js";
 import { Assistant } from "./assistant.js";
-import { Agent, planDeterministic, cloudLLM } from "./agent.js";
+import { Agent, planDeterministic, cloudLLM, setApiBase } from "./agent.js";
 ort.env.wasm.wasmPaths = new URL("./ort/", location.href).href; ort.env.wasm.numThreads = 1;
 const $ = s => document.querySelector(s), log = $("#log");
-const scrub = t => t.replace(/\b(Nemotron|Qwen)[\w.-]*/gi, "FrameFX Assistant").replace(/\*\*/g, "");
+const scrub = t => t.replace(/\b(Nemotron|Qwen)[\w.-]*/gi, "WyneAI").replace(/\*\*/g, "");
 function add(who, text) { const d = document.createElement("div"); d.className = "msg " + who; d.innerHTML = `<div class="av">${who === "u" ? "You" : "FX"}</div><div class="bub"></div>`;
   const b = d.querySelector(".bub"); if (text === null) b.className += " dots"; else setText(b, text); log.appendChild(d); log.scrollTop = 1e9; return b; }
-function setText(b, text) { b.textContent = ""; text.split("\n").forEach(l => { const s = document.createElement("div"); if (l.startsWith("WARNING")) s.className = "warn"; s.textContent = l || "\u00a0"; b.appendChild(s); }); }
+function setText(b, text) { b.textContent = ""; text.split("\n").forEach(l => { const s = document.createElement("div"); if (l.startsWith("WARNING")) s.className = "warn"; linkify(s, l || "\u00a0"); b.appendChild(s); }); }
+function linkify(el, l) { const re = /\[([^\]]{1,200})\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)<>\]]+)/g; let i = 0, m;
+  while ((m = re.exec(l))) { el.append(l.slice(i, m.index)); const a = document.createElement("a"); a.href = m[2] || m[3]; a.textContent = m[1] || m[3]; a.target = "_blank"; a.rel = "noopener noreferrer"; el.append(a); i = re.lastIndex; } el.append(l.slice(i)); }
 function card(bub) { const a = window.bot; const st = a.chat.state(), set = Chat.settings(a.last), js = JSON.stringify(a.chat.profileJson(), null, 2);
   document.querySelectorAll(".card").forEach(c => c.classList.add("old"));
   const rows = { GPU: (st.gpu || "RTX 3060 (assumed)") + (st.laptop ? " (laptop)" : ""), "Fps now / target": (st.fps ?? "?") + " / " + (st.target ?? "auto"), ...set };
@@ -48,13 +50,13 @@ function card(bub) { const a = window.bot; const st = a.chat.state(), set = Chat
   bub.appendChild(c); log.scrollTop = 1e9; }
 const CHIPS = ["Set up Cyberpunk for my 3060, make it quieter, then export it", "What is Google?", "Is a 3080 or 4070 Super faster?", "Elden Ring on a 3060, 50 fps, want 100"];
 function chips() { $("#chips").innerHTML = ""; for (const c of CHIPS) { const b = document.createElement("button"); b.textContent = c; b.onclick = () => { $("#q").value = c; $("#f").requestSubmit(); }; $("#chips").appendChild(b); } }
-const hello = () => { add("a", "Hey! I'm the FrameFX Assistant. Ask me anything, or give me a task: I can build, tweak, explain and export FrameFX presets, look up games and GPUs, and compare cards."); chips(); };
-let llmState = "ready"; const llmFn = cloudLLM("https://preset-ai-chat.vercel.app/api/chat");
+const hello = () => { add("a", "Hey! I'm WyneAI. Ask me anything, including things I can look up on the web, or give me a task: I can build, tweak, explain and export FrameFX presets, look up games and GPUs, and compare cards."); chips(); };
+let llmState = "ready"; const llmFn = cloudLLM("https://preset-ai-chat.vercel.app/api/chat"); setApiBase("https://preset-ai-chat.vercel.app/api/chat");
 function notice(t) { $("#notice").hidden = !t; $("#notice").textContent = t || ""; }
 const ui = {
   copy: async j => { try { await navigator.clipboard.writeText(j); return true; } catch { return false; } },
   download: async (j, exe) => { const u = URL.createObjectURL(new Blob([j], { type: "application/json" })); const l = document.createElement("a"); l.href = u; l.download = (exe || "preset").replace(/\.exe$/i, "") + ".framefx.json"; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 5000); return true; } };
-const ICON = { make_preset: "🎮", change_preset: "🛠️", lookup_game: "🔎", lookup_gpu: "🔎", compare_gpus: "⚖️", explain_preset: "💡", export_preset: "📤", reset_session: "↺" };
+const ICON = { make_preset: "🎮", change_preset: "🛠️", lookup_game: "🔎", lookup_gpu: "🔎", compare_gpus: "⚖️", explain_preset: "💡", export_preset: "📤", reset_session: "↺", web_search: "🌐", fetch_page: "📄" };
 function stepRow(call, res) { const d = document.createElement("details"); d.className = "step" + (res.ok ? "" : " bad");
   const arg = Object.values(call.arguments || {}).map(String).join(", ");
   d.innerHTML = `<summary>${ICON[call.name] || "⚙️"} used tool <b></b><span class="sa"></span>${res.ok ? "" : " · failed"}</summary><pre></pre>`;
@@ -76,8 +78,8 @@ async function handle(t) {
             r = { text: txt }; }
     else r = await agent.deterministic(t, on); }
   else { try { r = await agent.runNative(t, on); }
-    catch (e) { const msg = e.status === 429 ? "I'm getting too many requests right now (rate limit). Here's what I can do in basic mode:" : "I couldn't reach the cloud AI (" + (e.message || e) + "), so I'm in basic mode for this message.";
-      notice(e.status === 429 ? "Rate limited: please wait a minute. Basic mode is used meanwhile." : "Cloud AI unavailable right now; using basic mode (presets and FrameFX help still work).");
+    catch (e) { const msg = e.status === 429 ? "I'm getting too many requests right now (rate limit). Here's what I can do in basic mode:" : "I couldn't reach WyneAI (" + (e.message || e) + "), so I'm in basic mode for this message.";
+      notice(e.status === 429 ? "Rate limited: please wait a minute. Basic mode is used meanwhile." : "WyneAI is unavailable right now; using basic mode (presets and FrameFX help still work).");
       agent.llm = null; if (window.bot.route(t)) { const x = await window.bot.send(t); r = { text: msg + "\n" + x.text }; } else { r = await agent.deterministic(t, on); r.text = msg + "\n" + (r.text || "I couldn't do that in basic mode."); } } }
   wrap.classList.remove("dots"); setText(wrap, scrub(r.text || "")); if (!steps.children.length) steps.remove();
   if (presetShown && window.bot.last) card(bub); }
